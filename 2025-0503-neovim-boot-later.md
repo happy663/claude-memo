@@ -17,123 +17,100 @@ MacBook Pro（M4 Pro, 48GB RAM）でのNeovim起動が約4秒かかっている�
 
 詳細な調査の結果、以下の問題点が特定されました：
 
-1. **特定のプラグインの読み込みに時間がかかっている**
-   - nvim-treesitterの読み込みに約25-28秒
-   - nvim-ts-autotagの読み込みに約28秒
-   - これらのプラグインはTreeSitterパーサーを読み込むため、特に初回起動時に時間がかかる
+1. **ネットワーク接続の遅延問題**
 
-2. **プラグイン管理の問題**
-   - 100個以上の多数のプラグインが導入されている
-   - 大部分のプラグインが遅延読み込み設定なしで即時ロードされている
-   - lazy.nvmのキャッシュは有効だが、多くのプラグインの初期化に時間がかかっている
+   - nvim起動時にDenopsプラグインが自動的にDenoサーバーを起動している
+   - ネットワーク接続処理（ソケット通信）が行われ、これが遅延の主な原因
+   - `lsof -i -n` の結果から、nvimプロセスがDeno（localhost:ポート番号）に接続していることを確認
+   - すぐに再起動した場合は、既にDenoサーバーが起動しているため速い
 
-3. **キャッシュ効果**
-   - Neovim終了後すぐに再起動すると速い → システムキャッシュが効いている
-   - しばらく経つとキャッシュが破棄され、再度すべてをロードする必要がある
+2. **日本語入力システム（skkeleton）の影響**
 
-4. **zshとの関連性**
-   - zshもNixで管理されており、シェル環境の初期化に時間がかかっている可能性がある
-   - システム全体の初期化が影響している可能性も考えられる
+   - skkeleton（日本語入力プラグイン）がDenopsプラグインに依存している
+   - skkeleton初期化時にネットワーク接続が発生し、DNS参照や辞書アクセスが行われる
+   - 大量の日本語辞書ファイル（SKK-JISYO）の読み込みが含まれる
 
-## 実行計画
+3. **環境変数とシステム設定の違い**
 
-### 1. プラグインの遅延読み込み対策
-   - プラグインを必要になったタイミングでロードするように設定を変更する
-   - 特に起動時間に大きく影響するプラグインを特定し、遅延読み込みを設定
-   ```lua
-   -- 例：nvim-treesitterの遅延読み込み設定
-   {
-     "nvim-treesitter/nvim-treesitter",
-     lazy = true,
-     event = { "BufReadPost", "BufNewFile" }, -- ファイルを開いたときにロード
-     dependencies = {
-       "nvim-treesitter/nvim-treesitter-textobjects",
-     },
-     -- 他の設定
-   }
-   
-   -- 例：nvim-ts-autotagの遅延読み込み設定
-   {
-     "windwp/nvim-ts-autotag",
-     lazy = true,
-     event = { "InsertEnter" }, -- 挿入モードに入ったときにロード
-     -- 他の設定
-   }
+   - MacBook ProとMacBook Airで環境変数やシステム設定が微妙に異なる可能性がある
+   - Nixの設定によって、ネットワーク関連の挙動が影響を受けている
+
+4. **DNS解決の遅延**
+   - DNSの設定（`10.226.15.254`）に対する名前解決に時間がかかっている可能性
+   - MacBook Airよりも、MacBook ProのDNS解決が遅い可能性がある
+
+## 解決策
+
+1. **Denopsの設定調整**
+
+   - 起動時のネットワーク接続タイムアウトを短くする
+
+   ```vim
+   " ~/.config/nvim/init.luaに追加
+   vim.g.denops_server_wait_timeout = 1000  -- 1秒のタイムアウト（デフォルトは30秒）
    ```
 
-### 2. 起動時に必要なプラグインの整理
-   - 起動時に絶対に必要なプラグインのみを即時ロード、他は遅延読み込みに変更
-   - プラグインをイベント、キーマップ、コマンドに基づいて遅延読み込み
-   - 設定例:
-   ```lua
-   -- コマンド実行時にロード
-   { 
-     "plugin/name", 
-     lazy = true, 
-     cmd = { "PluginCommand" } 
-   }
-   
-   -- 特定のキーマップを使用時にロード
-   { 
-     "plugin/name", 
-     lazy = true, 
-     keys = { "<leader>p" } 
-   }
-   
-   -- 特定のファイルタイプでロード
-   { 
-     "plugin/name", 
-     lazy = true, 
-     ft = { "markdown", "lua" } 
-   }
+2. **ホスト名解決の最適化**
+
+   - `/etc/hosts` にローカルホスト定義を追加し、DNS参照を回避
+
+   ```
+   # /etc/hostsに追加
+   127.0.0.1 localhost.localdomain
+   ::1       localhost.localdomain
    ```
 
-### 3. lazy.nvmの最適化
-   - lazy.nvmのパフォーマンス関連設定を最適化
+3. **skkeleton設定の遅延読み込み化**
+
+   - skkeleton（日本語入力）を必要になるまで遅延させる
+
    ```lua
-   require("lazy").setup({
-     performance = {
-       cache = {
-         enabled = true,
-         path = vim.fn.stdpath("cache") .. "/lazy",
-         ttl = 86400, -- 24時間→そのまま
+   -- /Users/happy/dotfiles/conf/.config/nvim/lua/plugins/japanese/skkeleton.luaを編集
+   return {
+     {
+       "vim-skk/skkeleton",
+       cond = vim.g.not_in_vscode,
+       lazy = true,          -- 追加：遅延読み込み設定
+       event = "InsertEnter", -- 追加：挿入モード時に読み込み
+       dependencies = {
+         { "vim-denops/denops.vim" },
        },
-       reset_packpath = true, -- packpathをリセットし、プラグインの競合を防ぐ
-       rtp = {
-         reset = true, -- rtpをリセット
-         disabled_plugins = {
-           "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
-           "gzip", "zip", "zipPlugin", "tar", "tarPlugin", 
-           "getscript", "getscriptPlugin", "vimball", "vimballPlugin",
-           "2html_plugin", "logipat", "rrhelper", "spellfile_plugin", "matchit"
-         },
-       },
-     },
-   })
+       -- 以下は同じ
+     }
+   }
    ```
 
-### 4. プラグインの見直しと整理
-   - 使用頻度の低いプラグインを特定し、本当に必要か検討
-   - 類似機能を持つプラグインを整理・統合
-   - 特に起動時間に影響の大きいプラグインを選別
+4. **Denops自体の遅延読み込み化**
 
-### 5. TreeSitterのパーサー最適化
-   - 必要なパーサーのみをインストール
-   - パーサーのコンパイルをバックグラウンドで行うように設定
+   - Denopsプラグインを直接遅延読み込みにする
+
    ```lua
-   require("nvim-treesitter.configs").setup({
-     ensure_installed = { "lua", "vim", "markdown" }, -- 本当に必要な言語のみに制限
-     sync_install = false, -- 非同期インストール
-     auto_install = false, -- 自動インストールをオフに
-   })
+   -- /Users/happy/dotfiles/conf/.config/nvim/lua/plugins/japanese/denops.luaを新規作成（またはプラグイン定義を適切な場所に移動）
+   return {
+     {
+       "vim-denops/denops.vim",
+       lazy = true,          -- 追加：遅延読み込み設定
+       event = "InsertEnter", -- 追加：挿入モード時に読み込み
+     }
+   }
    ```
 
-### 6. システムキャッシュ関連の最適化
-   - Nixの設定を見直し、zshの起動も高速化
-   - システムキャッシュが効果的に利用されるよう設定を調整
+5. **起動時のネットワーク接続制限**
 
-### 7. 起動時間計測とフィードバック
-   - 各改善策適用後に起動時間を計測
-   - 最も効果のあった対策を特定し、さらに最適化
+   - 起動時のネットワーク接続をブロックする設定を追加
 
-この改善策を順番に適用し、その都度効果を検証することで、MacBook ProでもMacBook Airのように高速な起動時間を実現することが期待できます。
+   ```lua
+   -- ~/.config/nvim/init.luaに追加
+   vim.g.denops_server_addr = ""  -- 共有サーバーアドレスを空にしてネットワーク接続を回避
+   ```
+
+6. **システムキャッシュの活用**
+
+   - Nixの設定を見直し、キャッシュ戦略を最適化
+   - システム起動時にDenoサーバーを事前に起動することも検討
+
+7. **問題の根本解決：代替プラグインの検討**
+   - 日本語入力に別のプラグインを使用することを検討
+   - ネットワーク接続に依存しない方式のプラグインを探す
+
+上記の解決策を順番に試し、最も効果的な方法を特定することをお勧めします。特に1, 3, 4の対策は比較的簡単に実施でき、効果が期待できます。
