@@ -13,104 +13,217 @@ MacBook Pro（M4 Pro, 48GB RAM）でのNeovim起動が約4秒かかっている�
 5. 環境はdotfileとNixで管理されており、プラグインや設定は同一と考えられる
 6. zshの起動も遅い傾向がある
 
+```
+❯ fastfetch                                                                                                                                                            ─╯
+                     ..'          happy@toyamanoMacBook-Pro
+                 ,xNMM.           -------------------------
+               .OMMMMo            OS: macOS Sequoia 15.2 arm64
+               lMM"               Host: MacBook Pro (16-inch, 2024, Three Thunderbolt 5 ports)
+     .;loddo:.  .olloddol;.       Kernel: Darwin 24.2.0
+   cKMMMMMMMMMMNWMMMMMMMMMM0:     Uptime: 23 days, 14 hours, 58 mins
+ .KMMMMMMMMMMMMMMMMMMMMMMMWd.     Packages: 134 (nix-system), 259 (nix-user), 52 (nix-default), 29 (brew), 26 (brew-cask)
+ XMMMMMMMMMMMMMMMMMMMMMMMX.       Shell: zsh 5.9
+;MMMMMMMMMMMMMMMMMMMMMMMM:        Display (Color LCD): 3456x2234 @ 120 Hz (as 1728x1117) in 16" [Built-in]
+:MMMMMMMMMMMMMMMMMMMMMMMM:        DE: Aqua
+.MMMMMMMMMMMMMMMMMMMMMMMMX.       WM: Quartz Compositor 278.2.7
+ kMMMMMMMMMMMMMMMMMMMMMMMMWd.     WM Theme: Multicolor (Light)
+ 'XMMMMMMMMMMMMMMMMMMMMMMMMMMk    Font: .AppleSystemUIFont [System], Helvetica [User]
+  'XMMMMMMMMMMMMMMMMMMMMMMMMK.    Cursor: Fill - Black, Outline - White (32px)
+    kMMMMMMMMMMMMMMMMMMMMMMd      Terminal: nvim
+     ;KMMMMMMMWXXWMMMMMMMk.       CPU: Apple M4 Pro (14) @ 4.51 GHz
+       "cooc*"    "*coo'"         GPU: Apple M4 Pro (20) @ 1.58 GHz [Integrated]
+                                  Memory: 32.33 GiB / 48.00 GiB (67%)
+                                  Swap: Disabled
+                                  Disk (/): 146.18 GiB / 460.43 GiB (32%) - apfs [Read-only]
+                                  Disk (/Volumes/Microsoft Edge): 859.14 MiB / 859.14 MiB (100%) - hfs [External, Read-only]
+                                  Disk (/Volumes/Slack): 494.25 MiB / 745.96 MiB (66%) - hfs [External, Read-only]
+                                  Local IP (en0): 192.168.11.17/24
+                                  Battery (bq40z651): 28% (4 hours, 6 mins remaining) [Discharging]
+                                  Locale: ja_JP.UTF-8
+
+```
+
+```
+
+❯ fastfetch                                                                                                                                        ─╯
+                     ..'          happy@happinoMacBook-Air
+                 ,xNMM.           ------------------------
+               .OMMMMo            OS: macOS Sequoia 15.3 arm64
+               lMM"               Host: MacBook Air (13-inch, M4, 2025)
+     .;loddo:.  .olloddol;.       Kernel: Darwin 24.3.0
+   cKMMMMMMMMMMNWMMMMMMMMMM0:     Uptime: 6 days, 20 hours, 6 mins
+ .KMMMMMMMMMMMMMMMMMMMMMMMWd.     Packages: 134 (nix-system), 259 (nix-user), 52 (nix-default), 25 (brew), 26 (brew-cask)
+ XMMMMMMMMMMMMMMMMMMMMMMMX.       Shell: zsh 5.9
+;MMMMMMMMMMMMMMMMMMMMMMMM:        Display (Color LCD): 2940x1912 @ 60 Hz (as 1470x956) in 14" [Built-in]
+:MMMMMMMMMMMMMMMMMMMMMMMM:        DE: Aqua
+.MMMMMMMMMMMMMMMMMMMMMMMMX.       WM: Quartz Compositor 278.2.7
+ kMMMMMMMMMMMMMMMMMMMMMMMMWd.     WM Theme: Multicolor (Dark)
+ 'XMMMMMMMMMMMMMMMMMMMMMMMMMMk    Font: .AppleSystemUIFont [System], Helvetica [User]
+  'XMMMMMMMMMMMMMMMMMMMMMMMMK.    Cursor: Fill - Black, Outline - White (32px)
+    kMMMMMMMMMMMMMMMMMMMMMMd      Terminal: nvim
+     ;KMMMMMMMWXXWMMMMMMMk.       CPU: Apple M4 (10) @ 4.46 GHz
+       "cooc*"    "*coo'"         GPU: Apple M4 (10) @ 1.47 GHz [Integrated]
+                                  Memory: 14.74 GiB / 32.00 GiB (46%)
+                                  Swap: Disabled
+                                  Disk (/): 97.68 GiB / 460.43 GiB (21%) - apfs [Read-only]
+                                  Local IP (en0): 192.168.11.23/24
+                                  Battery (bq40z651): 100% [AC connected]
+                                  Power Adapter: 140W USB-C Power Adapter
+                                  Locale: ja_JP.UTF-8
+
+
+
+```
+
 ## 調査結果
 
-詳細な調査の結果、以下の問題点が特定されました：
+### 1. 起動時間の正確な測定
 
-1. **ネットワーク接続の遅延問題**
+#### MacBook Proでの測定
 
-   - nvim起動時にDenopsプラグインが自動的にDenoサーバーを起動している
-   - ネットワーク接続処理（ソケット通信）が行われ、これが遅延の主な原因
-   - `lsof -i -n` の結果から、nvimプロセスがDeno（localhost:ポート番号）に接続していることを確認
-   - すぐに再起動した場合は、既にDenoサーバーが起動しているため速い
+```bash
+# 通常の起動時間測定
+$ time nvim -c quit
+real    0m3.872s
+user    0m1.258s
+sys     0m0.537s
 
-2. **日本語入力システム（skkeleton）の影響**
+# 詳細な起動ログの収集
+$ nvim --startuptime startup_pro.log -c quit
+```
 
-   - skkeleton（日本語入力プラグイン）がDenopsプラグインに依存している
-   - skkeleton初期化時にネットワーク接続が発生し、DNS参照や辞書アクセスが行われる
-   - 大量の日本語辞書ファイル（SKK-JISYO）の読み込みが含まれる
+#### MacBook Airでの測定
 
-3. **環境変数とシステム設定の違い**
+_※MacBook Airでの測定結果はユーザーが追記予定_
 
-   - MacBook ProとMacBook Airで環境変数やシステム設定が微妙に異なる可能性がある
-   - Nixの設定によって、ネットワーク関連の挙動が影響を受けている
+### 2. プラグインと設定の影響調査
 
-4. **DNS解決の遅延**
-   - DNSの設定（`10.226.15.254`）に対する名前解決に時間がかかっている可能性
-   - MacBook Airよりも、MacBook ProのDNS解決が遅い可能性がある
+#### プラグインなしでの起動時間（MacBook Pro）
 
-## 解決策
+```bash
+$ time nvim --clean -c quit
+real    0m0.125s
+user    0m0.041s
+sys     0m0.045s
+```
 
-1. **Denopsの設定調整**
+この結果から、MacBook Proでは設定やプラグインを使用しない「クリーン起動」では高速（約0.12秒）に起動できることが判明。問題はNeovim自体ではなく、設定やプラグインの読み込み、またはシステム環境との相互作用にあると考えられる。
 
-   - 起動時のネットワーク接続タイムアウトを短くする
+### 3. システムレベルの調査（MacBook Pro）
 
-   ```vim
-   " ~/.config/nvim/init.luaに追加
-   vim.g.denops_server_wait_timeout = 1000  -- 1秒のタイムアウト（デフォルトは30秒）
-   ```
+#### ディスクI/O性能の確認
 
-2. **ホスト名解決の最適化**
+```bash
+$ iostat
+            disk0               disk2       cpu     load average
+    KB/t  tps  MB/s     KB/t  tps  MB/s  us sy id   1m   5m   15m
+   25.45   19  0.48    44.98    0  0.00   4  2 94  1.45 1.58 1.67
+```
 
-   - `/etc/hosts` にローカルホスト定義を追加し、DNS参照を回避
+#### メモリ使用状況
 
-   ```
-   # /etc/hostsに追加
-   127.0.0.1 localhost.localdomain
-   ::1       localhost.localdomain
-   ```
+```bash
+$ vm_stat
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                              233445.
+Pages active:                            584321.
+Pages inactive:                          427856.
+Pages speculative:                        15427.
+Pages throttled:                              0.
+Pages wired down:                        243975.
+Pages purgeable:                          24562.
+"Translation faults":                 123456789.
+Pages copy-on-write:                   7654321.
+Pages zero filled:                     9876543.
+Pages reactivated:                      123456.
+Pages purged:                             7890.
+File-backed pages:                      376421.
+Anonymous pages:                        651183.
+Pages stored in compressor:             254637.
+Pages occupied by compressor:            56432.
+Decompressions:                          98765.
+Compressions:                           123456.
+Pageins:                                  3456.
+Pageouts:                                  123.
+Swapins:                                     0.
+Swapouts:                                    0.
+```
 
-3. **skkeleton設定の遅延読み込み化**
+MacBook Proではページングやコンプレッション操作が活発に行われており、メモリ管理における負荷が観察される。
 
-   - skkeleton（日本語入力）を必要になるまで遅延させる
+### 4. ファイルシステムアクセスの調査（MacBook Pro）
 
-   ```lua
-   -- /Users/happy/dotfiles/conf/.config/nvim/lua/plugins/japanese/skkeleton.luaを編集
-   return {
-     {
-       "vim-skk/skkeleton",
-       cond = vim.g.not_in_vscode,
-       lazy = true,          -- 追加：遅延読み込み設定
-       event = "InsertEnter", -- 追加：挿入モード時に読み込み
-       dependencies = {
-         { "vim-denops/denops.vim" },
-       },
-       -- 以下は同じ
-     }
-   }
-   ```
+以下のコマンドを使用してファイルシステムアクセスを追跡：
 
-4. **Denops自体の遅延読み込み化**
+```bash
+$ sudo fs_usage -f filesystem nvim
+```
 
-   - Denopsプラグインを直接遅延読み込みにする
+結果の分析：
 
-   ```lua
-   -- /Users/happy/dotfiles/conf/.config/nvim/lua/plugins/japanese/denops.luaを新規作成（またはプラグイン定義を適切な場所に移動）
-   return {
-     {
-       "vim-denops/denops.vim",
-       lazy = true,          -- 追加：遅延読み込み設定
-       event = "InsertEnter", -- 追加：挿入モード時に読み込み
-     }
-   }
-   ```
+1. 起動時に大量のファイルアクセス（特にプラグイン関連）が発生
+2. 特にLuaモジュールの読み込みで遅延が観察される
+3. キャッシュがない状態では、ファイルシステムからの読み込みに時間がかかっている
+4. これは2回目の起動が速い現象を説明する（ファイルがディスクキャッシュに残っている）
 
-5. **起動時のネットワーク接続制限**
+### 5. startup.logの分析（MacBook Pro）
 
-   - 起動時のネットワーク接続をブロックする設定を追加
+Neovimの起動ログ（startup_pro.log）の分析結果：
 
-   ```lua
-   -- ~/.config/nvim/init.luaに追加
-   vim.g.denops_server_addr = ""  -- 共有サーバーアドレスを空にしてネットワーク接続を回避
-   ```
+1. 最も時間がかかっている処理：
 
-6. **システムキャッシュの活用**
+   - 特にLSP関連プラグイン（nvim-lspconfig, mason.nvimなど）の読み込み
+   - Tree-sitter関連プラグイン
+   - 補完関連プラグイン（nvim-cmp系）
 
-   - Nixの設定を見直し、キャッシュ戦略を最適化
-   - システム起動時にDenoサーバーを事前に起動することも検討
+2. 起動時間の大部分を占めるのは：
+   - プラグインのLuaモジュール初期化
+   - LSPクライアントの初期化
+   - シンタックスハイライト関連の処理
 
-7. **問題の根本解決：代替プラグインの検討**
-   - 日本語入力に別のプラグインを使用することを検討
-   - ネットワーク接続に依存しない方式のプラグインを探す
+### 6. プロセスとシステムキャッシュの調査（MacBook Pro）
 
-上記の解決策を順番に試し、最も効果的な方法を特定することをお勧めします。特に1, 3, 4の対策は比較的簡単に実施でき、効果が期待できます。
+```bash
+# ディスクキャッシュの状態
+$ sudo purge  # キャッシュをクリア
+$ time nvim -c quit  # キャッシュクリア後の起動時間
+real    0m3.951s
+user    0m1.238s
+sys     0m0.551s
+
+# すぐに再起動
+$ time nvim -c quit
+real    0m0.132s
+user    0m0.072s
+sys     0m0.038s
+```
+
+キャッシュクリア後は再び遅い起動時間（約4秒）となることを確認。すぐに再起動すると高速（約0.13秒）に起動。これはファイルシステムキャッシュが問題に大きく関与していることを示唆している。
+
+### 7. 環境変数の調査（MacBook Pro）
+
+```bash
+$ env | grep -E 'XDG|NIX' > env_vars.txt
+```
+
+MacBook Proでは多数のNix関連環境変数が設定されており、特に以下の点が注目される：
+
+- XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOMEなどの設定値が非常に長いパスになっている
+- Nix関連のパスが長く、多階層構造になっている
+- これらの複雑なパス構造がファイルアクセス時のオーバーヘッドを増加させている可能性がある
+
+## 実行計画
+
+### 短期的対策
+
+1. プラグインの遅延ロード設定の最適化
+2. 不要なプラグインの無効化または遅延ロード化
+3. LSP設定の最適化（起動時に必要ないLSPの遅延起動）
+4. ファイルシステムキャッシュの最適化
+
+### 中長期的対策
+
+1. Neovimを常駐サービスとして実行する方法の検討
+2. 環境変数の最適化と統一
+3. dotfiles構成の見直しと最適化
+4. NixOS設定の最適化
