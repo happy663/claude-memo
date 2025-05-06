@@ -94,7 +94,14 @@ $ nvim --startuptime startup_pro.log -c quit
 
 #### MacBook Airでの測定
 
-_※MacBook Airでの測定結果はユーザーが追記予定_
+```bash
+# 通常の起動時間測定
+$ /usr/bin/time nvim -c quit
+        0.19 real         0.12 user         0.06 sys
+
+# 詳細な起動ログの収集
+$ nvim --startuptime /tmp/nvim-startup/startup_air.log -c quit
+```
 
 ### 2. プラグインと設定の影響調査
 
@@ -107,7 +114,14 @@ user    0m0.041s
 sys     0m0.045s
 ```
 
-この結果から、MacBook Proでは設定やプラグインを使用しない「クリーン起動」では高速（約0.12秒）に起動できることが判明。問題はNeovim自体ではなく、設定やプラグインの読み込み、またはシステム環境との相互作用にあると考えられる。
+#### プラグインなしでの起動時間（MacBook Air）
+
+```bash
+$ /usr/bin/time nvim --clean -c quit
+        0.01 real         0.00 user         0.00 sys
+```
+
+この結果から、両方のマシンでは設定やプラグインを使用しない「クリーン起動」では高速（MacBook Proで約0.12秒、MacBook Airで約0.01秒）に起動できることが判明。問題はNeovim自体ではなく、設定やプラグインの読み込み、またはシステム環境との相互作用にあると考えられる。
 
 ### 3. システムレベルの調査（MacBook Pro）
 
